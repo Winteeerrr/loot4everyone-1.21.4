@@ -5,9 +5,9 @@ import net.minecraft.block.ChestBlock;
 import net.minecraft.block.entity.ChestBlockEntity;
 import net.minecraft.block.enums.ChestType;
 import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.decoration.ItemFrameEntity;
-import net.minecraft.item.Item;
 import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.NbtElement;
+import net.minecraft.nbt.NbtList;
 import net.minecraft.registry.RegistryWrapper;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.math.BlockPos;
@@ -32,7 +32,7 @@ public class StateSaverAndLoader extends PersistentState {
         NbtCompound playersNbt = new NbtCompound();
         players.forEach(((uuid, playerData) -> {
             NbtCompound playerNbt = new NbtCompound();
-            playerNbt.putString("inventory",playerData.inventoryToString());
+            playerNbt.put("inventory", playerData.inventoryToNbt());
             playersNbt.put(uuid.toString(),playerNbt);
         }));
         nbt.put("players", playersNbt);
@@ -58,20 +58,31 @@ public class StateSaverAndLoader extends PersistentState {
 
     public static StateSaverAndLoader createFromNbt(NbtCompound tag, RegistryWrapper.WrapperLookup registryLookup) {
         StateSaverAndLoader state = new StateSaverAndLoader();
+        boolean migratedFromLegacy = false;
 
-        NbtCompound playersNbt = tag.getCompound("players");
-        playersNbt.getKeys().forEach(key -> {
+        NbtCompound playersTag = tag.getCompound("players");
+        for (String playerUuid : playersTag.getKeys()) {
+            NbtCompound playerTag = playersTag.getCompound(playerUuid);
             PlayerData playerData = new PlayerData();
-            playerData.stringToInventory(playersNbt.getCompound(key).getString("inventory"));
-            UUID uuid = UUID.fromString(key);
-            state.players.put(uuid, playerData);
-        });
+
+            if (playerTag.contains("inventory", NbtElement.LIST_TYPE)) {
+                NbtList inventoryEntries = playerTag.getList("inventory", NbtElement.COMPOUND_TYPE);
+                playerData.inventoryFromNbt(inventoryEntries);
+            } else if (playerTag.contains("inventory", NbtElement.STRING_TYPE)) {
+                String legacyInventory = playerTag.getString("inventory");
+                if (legacyInventory != null && !legacyInventory.isEmpty()) {
+                    playerData.stringToInventory(legacyInventory);
+                    migratedFromLegacy = true;
+                }
+            }
+            state.players.put(UUID.fromString(playerUuid), playerData);
+        }
         NbtCompound chestsNbt = tag.getCompound("chests");
         chestsNbt.getKeys().forEach(key -> {
             ChestData chestData = new ChestData();
             chestData.stringToChestData(chestsNbt.getCompound(key).getString("chestdata"));
             String[] posParts = key.split(",");
-            BlockPos pos = new BlockPos(Integer.parseInt(posParts[0]), Integer.parseInt(posParts[1]), Integer.parseInt(posParts[2]));
+            BlockPos pos = new BlockPos(Integer.parseInt(posParts[0]),Integer.parseInt(posParts[1]),Integer.parseInt(posParts[2]));
             state.chests.put(pos, chestData);
         });
         NbtCompound itemframesNbt = tag.getCompound("itemframes");
@@ -85,6 +96,8 @@ public class StateSaverAndLoader extends PersistentState {
         if (settingsString != null && !settingsString.isEmpty()) {
             state.settings.setSettings(settingsString);
         }
+
+        if (migratedFromLegacy) state.markDirty();
         return state;
     }
 
