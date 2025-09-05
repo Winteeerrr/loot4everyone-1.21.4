@@ -1,7 +1,6 @@
 package com.loot4everyone.mixin;
 
 import com.loot4everyone.*;
-import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.ChestBlock;
 import net.minecraft.block.entity.BlockEntity;
@@ -9,14 +8,8 @@ import net.minecraft.block.entity.ChestBlockEntity;
 import net.minecraft.block.enums.ChestType;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.registry.RegistryWrapper;
-import net.minecraft.util.ActionResult;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.BlockView;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -35,42 +28,32 @@ public abstract class ChestBlockEntityMixin {
         BlockState blockState = chest.getCachedState();
         if (blockPos != null) {
             if (blockState.get(ChestBlock.CHEST_TYPE) == ChestType.SINGLE) {
-                if (StateSaverAndLoader.isBarrelStatePresentInPlayerState(Loot4Everyone.server, player, blockPos)) {
-                    PlayerData playerData = StateSaverAndLoader.getPlayerState(Loot4Everyone.server, player);
-                    List<ItemStack> inventory = playerData.getInventory().get(blockPos);
-                    for (int i = 0; i < inventory.size(); i++) {
-                        chest.setStack(i, inventory.get(i));
-                    }
+                List<ItemStack> inventory = StateSaverAndLoader.getPlayerState(Loot4Everyone.server, player).getInventory().get(blockPos);
+                if (inventory != null) {
+                    int inventorySize = Math.min(chest.size(), inventory.size());
+                    for (int i = 0; i < inventorySize; i++) chest.setStack(i, inventory.get(i));
                 } else {
-                    ChestData chestData = StateSaverAndLoader.getChestState(Loot4Everyone.server, blockPos);
-                    chest.setLootTable(chestData.getLootTable(), chestData.getLootTableSeed());
+                    ChestData data = StateSaverAndLoader.getChestState(Loot4Everyone.server, blockPos);
+                    chest.setLootTable(data.getLootTable(), data.getLootTableSeed());
                     chest.generateLoot(player);
                 }
             }
             else if (blockState.get(ChestBlock.CHEST_TYPE) == ChestType.LEFT) {
                 BlockPos rightPos = blockPos.offset(blockState.get(ChestBlock.FACING).rotateYClockwise());
+                List<ItemStack> inventory = StateSaverAndLoader.getPlayerState(Loot4Everyone.server, player).getInventory().get(blockPos);
 
-                if (StateSaverAndLoader.isBarrelStatePresentInPlayerState(Loot4Everyone.server, player, blockPos)) {
-                    // Load both chests from player state
-                    PlayerData playerData = StateSaverAndLoader.getPlayerState(Loot4Everyone.server, player);
-                    List<ItemStack> inventory = playerData.getInventory().get(blockPos);
+                if (inventory != null) {
+                    int inventorySize = Math.min(27, inventory.size());
+                    for (int i = 0; i < inventorySize; i++) chest.setStack(i, inventory.get(i));
 
-                    // Left chest
-                    for (int i = 0; i < 27; i++) { // First half for left chest
-                        chest.setStack(i, inventory.get(i));
-                    }
-
-                    // Right chest
                     BlockEntity rightEntity = player.getWorld().getBlockEntity(rightPos);
                     if (rightEntity instanceof ChestBlockEntity rightChest) {
-                        for (int i = 27; i < 54; i++) { // Second half for right chest
-                            rightChest.setStack(i - 27, inventory.get(i));
-                        }
+                        int rightSize = Math.min(54, inventory.size());
+                        for (int i = 27; i < rightSize; i++) rightChest.setStack(i - 27, inventory.get(i));
                     }
                 } else {
-                    // Generate loot only for left chest
-                    ChestData chestData = StateSaverAndLoader.getChestState(Loot4Everyone.server, blockPos);
-                    chest.setLootTable(chestData.getLootTable(), chestData.getLootTableSeed());
+                    ChestData data = StateSaverAndLoader.getChestState(Loot4Everyone.server, blockPos);
+                    chest.setLootTable(data.getLootTable(), data.getLootTableSeed());
                     chest.generateLoot(player);
                 }
             }
